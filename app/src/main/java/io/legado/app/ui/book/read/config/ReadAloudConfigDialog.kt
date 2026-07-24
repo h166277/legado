@@ -98,6 +98,8 @@ enum class ReadAloudConfigGroup(
             PreferKey.aiReadAloudAutoCreateCharacters,
             PreferKey.aiReadAloudAutoCreateCharacterPrompt,
             PreferKey.aiReadAloudAutoCreateAvatar,
+            PreferKey.aiReadAloudVoiceStylePrompt,
+            PreferKey.aiReadAloudFailRetryCount,
             KEY_READ_ALOUD_SPEAKER_MANAGE,
             PreferKey.aiReadAloudRoleMode,
             PreferKey.aiReadAloudRolePreprocess,
@@ -511,6 +513,32 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                     enabled = enabled && AppConfig.aiReadAloudAutoCreateCharacters,
                     onCheckedChange = { AppConfig.aiReadAloudAutoCreateAvatar = it }
                 ),
+                action(
+                    key = PreferKey.aiReadAloudVoiceStylePrompt,
+                    title = "音色风格分析提示词",
+                    summary = firstLineSummary(
+                        value = AppConfig.aiReadAloudVoiceStylePrompt,
+                        useDefault = AppConfig.aiReadAloudUsingDefaultVoiceStylePrompt
+                    ),
+                    enabled = enabled,
+                    onClick = ::showVoiceStylePromptDialog
+                ),
+                action(
+                    key = PreferKey.aiReadAloudFailRetryCount,
+                    title = "失败自动重试次数",
+                    summary = "${AppConfig.aiReadAloudFailRetryCount} 次 · 覆盖 LLM 分析 / 音色分析 / TTS（0=不重试，认证错误不重试）",
+                    enabled = enabled
+                ) {
+                    showAiRoleNumberDialog(
+                        "失败自动重试次数",
+                        AppConfig.aiReadAloudFailRetryCount,
+                        0,
+                        10
+                    ) {
+                        AppConfig.aiReadAloudFailRetryCount = it
+                        updateAiRolePreferences()
+                    }
+                },
                 action(
                     key = KEY_READ_ALOUD_SPEAKER_MANAGE,
                     title = "发言人管理",
@@ -1061,6 +1089,26 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 neutralText = "恢复默认",
                 onNeutral = {
                     AppConfig.aiReadAloudAutoCreateCharacterPrompt = ""
+                    updateAiRolePreferences()
+                }
+            )
+        }
+
+        private fun showVoiceStylePromptDialog() {
+            showLongTextInputDialog(
+                title = "音色风格分析提示词",
+                hint = "用于指导 LLM 根据角色上下文生成音色风格描述。文本框显示当前默认提示词，可直接修改；点“恢复默认”重置。",
+                initialValue = AppConfig.aiReadAloudVoiceStylePrompt,
+                maxLength = 4000,
+                maxLengthMessage = "提示词最多 4000 字",
+                minLines = 8,
+                onValue = {
+                    AppConfig.aiReadAloudVoiceStylePrompt = it
+                    updateAiRolePreferences()
+                },
+                neutralText = "恢复默认",
+                onNeutral = {
+                    AppConfig.aiReadAloudVoiceStylePrompt = ""
                     updateAiRolePreferences()
                 }
             )

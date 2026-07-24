@@ -768,7 +768,7 @@ private fun readMenuButtonTitle(
             ReadMenuButtonConfig.Builtin.AI_SUMMARY -> "AI"
             ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> "段落"
             ReadMenuButtonConfig.Builtin.BUBBLE -> "气泡"
-            ReadMenuButtonConfig.Builtin.CHARACTERS -> "角色"
+            ReadMenuButtonConfig.Builtin.CHARACTERS -> "配音"
             else -> ref.id
         }
     }

@@ -1087,6 +1087,18 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         5. appearance 只写文本能支持的可见形象，例如发型、服饰、体型、气质、明显特征；没有证据留空。
         6. evidence 必须引用当前章节的简短证据。
     """.trimIndent()
+    val DEFAULT_AI_READ_ALOUD_VOICE_STYLE_PROMPT = """
+        根据角色上下文生成适合 TTS 配音的音色风格描述：
+        1. 只输出一行中文描述，不要标题、编号、引号或解释。
+        2. 格式参考：
+           男性，约45岁，40%低沉磁性，35%威严浑厚，25%冷峻疏离。
+           女性，约20岁，50%清亮甜美，30%活泼轻快，20%俏皮灵动。
+        3. 先写性别，再写约XX岁或年纪阶段，再写 2–4 个音色特质，并用百分比表达比重，总和约 100%。
+        4. 只依据已有角色资料与给定片段证据；证据不足时仍给出稳妥默认音色，不要编造剧情。
+        5. 不要输出 JSON，不要输出多个角色。
+    """.trimIndent()
+    const val DEFAULT_AI_READ_ALOUD_FAIL_RETRY_COUNT = 2
+    val AI_READ_ALOUD_RETRY_BACKOFF_MILLIS = longArrayOf(500L, 1000L, 2000L, 4000L, 8000L)
     val DEFAULT_AI_READ_ALOUD_BGM_PROMPT = """
         配乐策略：
         1. 只在氛围、场景、危机、战斗、悬疑、温情、转折明显的连续段落使用配乐。
@@ -1210,6 +1222,38 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var aiReadAloudAutoCreateAvatar: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.aiReadAloudAutoCreateAvatar, false)
         set(value) = appCtx.putPrefBoolean(PreferKey.aiReadAloudAutoCreateAvatar, value)
+
+    var aiReadAloudVoiceStylePrompt: String
+        get() = appCtx.getPrefString(PreferKey.aiReadAloudVoiceStylePrompt)
+            .orEmpty()
+            .ifBlank { DEFAULT_AI_READ_ALOUD_VOICE_STYLE_PROMPT }
+        set(value) {
+            val prompt = value.trim()
+            if (prompt.isBlank() || prompt == DEFAULT_AI_READ_ALOUD_VOICE_STYLE_PROMPT) {
+                appCtx.removePref(PreferKey.aiReadAloudVoiceStylePrompt)
+            } else {
+                appCtx.putPrefString(PreferKey.aiReadAloudVoiceStylePrompt, prompt.take(4000))
+            }
+        }
+
+    val aiReadAloudUsingDefaultVoiceStylePrompt: Boolean
+        get() = appCtx.getPrefString(PreferKey.aiReadAloudVoiceStylePrompt).isNullOrBlank()
+
+    var aiReadAloudFailRetryCount: Int
+        get() = appCtx.getPrefInt(
+            PreferKey.aiReadAloudFailRetryCount,
+            DEFAULT_AI_READ_ALOUD_FAIL_RETRY_COUNT
+        ).coerceIn(0, 10)
+        set(value) = appCtx.putPrefInt(
+            PreferKey.aiReadAloudFailRetryCount,
+            value.coerceIn(0, 10)
+        )
+
+    fun aiReadAloudRetryBackoffMillis(attempt: Int): Long {
+        if (attempt <= 0) return 0L
+        val index = (attempt - 1).coerceIn(0, AI_READ_ALOUD_RETRY_BACKOFF_MILLIS.lastIndex)
+        return AI_READ_ALOUD_RETRY_BACKOFF_MILLIS[index]
+    }
 
     var aiReadAloudBgmEnabled: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.aiReadAloudBgmEnabled, false)

@@ -134,6 +134,7 @@ import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
 import io.legado.app.ui.book.changesource.ChangeChapterSourceDialog
+import io.legado.app.ui.book.character.BookDubbingActivity
 import io.legado.app.ui.book.character.BookCharacterManageActivity
 import io.legado.app.ui.book.info.BookInfoStartActivityContract
 import io.legado.app.ui.book.read.config.AutoReadDialog
@@ -3472,8 +3473,9 @@ class ReadBookActivity : BaseReadBookActivity(),
             toastOnUi("当前书籍不存在")
             return
         }
-        startActivity<BookCharacterManageActivity> {
-            putExtra(BookCharacterManageActivity.EXTRA_BOOK_URL, book.bookUrl)
+        // 听书多角色入口：打开书级配音工作台（角色音色 / 章节分析）
+        startActivity<BookDubbingActivity> {
+            putExtra(BookDubbingActivity.EXTRA_BOOK_URL, book.bookUrl)
         }
     }
 

@@ -591,7 +591,7 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             ReadMenuButtonConfig.Builtin.AI_SUMMARY -> "AI总结"
             ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> getString(R.string.paragraph_rule)
             ReadMenuButtonConfig.Builtin.BUBBLE -> "气泡"
-            ReadMenuButtonConfig.Builtin.CHARACTERS -> "角色"
+            ReadMenuButtonConfig.Builtin.CHARACTERS -> "配音"
             else -> ref.id
         }
     }
