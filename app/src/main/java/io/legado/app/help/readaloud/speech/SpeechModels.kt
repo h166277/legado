@@ -40,6 +40,7 @@ data class SpeechRoute(
     val toneID: String = "",
     val emotionName: String = "",
     val emotionTag: String = "",
+    val voiceStyle: String = "",
     val groupId: String = "",
     val groupName: String = "",
     val source: String = ""
@@ -64,6 +65,7 @@ data class SpeechRoute(
             put("toneID", toneID)
             put("emotionName", emotionName)
             put("emotionTag", emotionTag)
+            put("voiceStyle", voiceStyle)
             put("groupId", groupId)
             put("groupName", groupName)
             put("source", source)
@@ -88,6 +90,7 @@ data class SpeechRoute(
                     toneID = obj.optString("toneID").ifBlank { obj.optString("toneId") },
                     emotionName = obj.optString("emotionName"),
                     emotionTag = obj.optString("emotionTag"),
+                    voiceStyle = obj.optString("voiceStyle"),
                     groupId = obj.optString("groupId"),
                     groupName = obj.optString("groupName"),
                     source = obj.optString("source")

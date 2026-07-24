@@ -10,6 +10,7 @@ import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.putPrefString
+import org.json.JSONArray
 import org.json.JSONObject
 import splitties.init.appCtx
 
@@ -183,7 +184,13 @@ object ReadAloudServicePresets {
         val apiKey = draft.apiKey.trim()
         if (baseUrl.isBlank()) return "请填写 TTS Base URL"
         if (modelId.isBlank()) return "请填写 TTS 模型"
-        val httpTts = buildManagedHttpTts(baseUrl, apiKey, modelId, preset.contentType)
+        val httpTts = buildManagedHttpTts(
+            baseUrl = baseUrl,
+            apiKey = apiKey,
+            modelId = modelId,
+            contentType = preset.contentType,
+            presetId = preset.id
+        )
         // REPLACE 冲突策略，创建与更新共用
         appDb.httpTTSDao.insert(httpTts)
         val route = SpeechRoute(
@@ -210,17 +217,12 @@ object ReadAloudServicePresets {
         baseUrl: String,
         apiKey: String,
         modelId: String,
-        contentType: String
+        contentType: String,
+        presetId: String
     ): HttpTTS {
-        val endpoint = baseUrl.trimEnd('/') + "/audio/speech"
-        val body = JSONObject().apply {
-            put("model", modelId)
-            put("input", "{{speakText}}")
-            put("voice", "{{currentToneID || 'alloy'}}")
-            put("response_format", "mp3")
-            put("speed", "{{Math.max(0.25, Math.min(4.0, speakSpeed / 10.0))}}")
-        }
-        // AnalyzeUrl 支持 url + JSON options
+        val mimo = presetId == PRESET_MIMO
+        val endpoint = baseUrl.trimEnd('/') + if (mimo) "/chat/completions" else "/audio/speech"
+        val body = if (mimo) mimoBody(modelId) else openAiTtsBody(modelId)
         val urlRule = buildString {
             append(endpoint)
             append(",{")
@@ -241,13 +243,36 @@ object ReadAloudServicePresets {
             id = MANAGED_HTTP_TTS_ID,
             name = MANAGED_HTTP_TTS_NAME,
             url = urlRule,
-            contentType = contentType,
+            contentType = if (mimo) "application/json" else contentType,
             concurrentRate = "0",
             synthesisThreadCount = 2,
             header = header,
             speakersJson = """[{"speakerName":"默认","toneID":"alloy"}]""",
             lastUpdateTime = System.currentTimeMillis()
         )
+    }
+
+    private fun mimoBody(modelId: String) = JSONObject().apply {
+        put("model", modelId)
+        put("messages", JSONArray().apply {
+            put(JSONObject().apply {
+                put("role", "user")
+                put("content", "{{currentVoiceStyle || '自然、清晰、适合长篇听书的普通话音色'}}")
+            })
+            put(JSONObject().apply {
+                put("role", "assistant")
+                put("content", "{{speakText}}")
+            })
+        })
+        put("audio", JSONObject().apply { put("format", "wav") })
+    }
+
+    private fun openAiTtsBody(modelId: String) = JSONObject().apply {
+        put("model", modelId)
+        put("input", "{{speakText}}")
+        put("voice", "{{currentToneID || 'alloy'}}")
+        put("response_format", "mp3")
+        put("speed", "{{Math.max(0.25, Math.min(4.0, speakSpeed / 10.0))}}")
     }
 
     private data class ParsedManaged(
@@ -259,6 +284,7 @@ object ReadAloudServicePresets {
     private fun parseManagedHttpTts(httpTTS: HttpTTS): ParsedManaged {
         val rawUrl = httpTTS.url.substringBefore(",").trim()
         val baseUrl = rawUrl
+            .removeSuffix("/chat/completions")
             .removeSuffix("/audio/speech")
             .removeSuffix("/v1/audio/speech")
             .let { if (it.endsWith("/v1")) it else it.trimEnd('/') }

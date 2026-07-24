@@ -90,6 +90,7 @@ class AnalyzeUrl(
     private val currentSpeakerName: String? = null,
     private val currentEmotionName: String? = null,
     private val currentEmotionTag: String? = null,
+    private val currentVoiceStyle: String? = null,
     private val currentSpeechRouteJson: String? = null,
     private var baseUrl: String = "",
     private val source: BaseSource? = null,
@@ -384,6 +385,7 @@ class AnalyzeUrl(
             bindings["currentSpeakerName"] = currentSpeakerName
             bindings["currentEmotionName"] = currentEmotionName
             bindings["currentEmotionTag"] = currentEmotionTag
+            bindings["currentVoiceStyle"] = currentVoiceStyle
             bindings["currentSpeechRouteJson"] = currentSpeechRouteJson
             bindings["book"] = ruleData as? Book
             bindings["source"] = source

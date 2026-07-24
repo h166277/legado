@@ -191,6 +191,7 @@ object ReadAloudSpeechPlanner {
         return when {
             segment.characterId > 0L -> byId[segment.characterId]
             segment.characterName.isNotBlank() -> byName[characterNameKey(segment.characterName)]
+            segment.roleType == "narrator" -> byName[characterNameKey("旁白")]
             else -> null
         }
     }
@@ -222,11 +223,11 @@ object ReadAloudSpeechPlanner {
         if (!route.isConfigured) return null
         val emotionName = segment.emotionName.trim()
         val emotionTag = segment.emotionTag.trim()
-        return if (emotionName.isNotBlank() || emotionTag.isNotBlank()) {
-            route.copy(emotionName = emotionName, emotionTag = emotionTag)
-        } else {
-            route
-        }
+        return route.copy(
+            emotionName = emotionName.ifBlank { route.emotionName },
+            emotionTag = emotionTag.ifBlank { route.emotionTag },
+            voiceStyle = character?.personality?.trim().orEmpty().ifBlank { route.voiceStyle }
+        )
     }
 
     private fun assignConversationSides(

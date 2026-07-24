@@ -139,6 +139,7 @@ import io.legado.app.help.character.BookCharacterIdentityMigrator
 import io.legado.app.help.CoverDisplayResolver
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.readaloud.BookDubbingWorkspace
 import io.legado.app.help.readaloud.ReadAloudConfigChangeNotifier
 import io.legado.app.help.readaloud.ReadAloudSpeakerLoudnessManager
 import io.legado.app.help.readaloud.ReadAloudSpeechPlanItem
@@ -171,6 +172,7 @@ import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
+import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
@@ -262,7 +264,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val id: Long,
         val name: String,
         val role: String,
-        val summary: String,
+        val voiceSummary: String,
+        val routeSummary: String,
         val key: String
     )
 
@@ -309,6 +312,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val ttsEngines: List<TtsEngineUi> = emptyList(),
         val speechRoute: SpeechRoute = SpeechRoute(),
         val characterPreview: List<CharacterPreviewUi> = emptyList(),
+        val dubbingAnalyzed: Boolean = false,
+        val dubbingAnalyzing: Boolean = false,
         val audioInfo: AudioInfoUi = AudioInfoUi(),
         val nearbyParagraphs: List<ParagraphUi> = emptyList(),
         val textCues: List<TextCueUi> = emptyList(),
@@ -414,6 +419,10 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 onCapsulePositionChange = ::updateCapsulePosition,
                 onCapsuleBounds = ::updateCapsuleBounds,
                 onOpenCharacters = { callBack?.openBookCharacters() },
+                onAnalyzeCurrentChapter = ::analyzeCurrentChapterDubbing,
+                onAnalyzeCharacter = ::analyzeDubbingCharacter,
+                onPreviewCharacter = ::previewDubbingCharacter,
+                onReassignCharacter = ::reassignDubbingCharacter,
                 onHideRoleDetail = ::hideRoleDetail,
                 onOpenRoleDetail = ::openRoleDetail,
                 onDismissRoleStatus = ::dismissRoleStatus,
@@ -1015,6 +1024,87 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         (context as? AppCompatActivity)?.showDialogFragment(ReadAloudConfigDialog())
     }
 
+    private fun analyzeCurrentChapterDubbing() {
+        val book = ReadBook.book ?: return context.toastOnUi("书籍不存在")
+        if (!BookDubbingWorkspace.multiRoleReady()) {
+            context.toastOnUi(
+                if (!AppConfig.aiReadAloudRoleEnabled) "请先在设置中开启多角色"
+                else "请先配置多角色模型"
+            )
+            openReadAloudSetting()
+            return
+        }
+        val chapterIndex = ReadBook.durChapterIndex
+        roleStatusText = "正在分析当前章节配音"
+        roleStatusRunning = true
+        roleStatusError = false
+        refresh()
+        Coroutine.async {
+            BookDubbingWorkspace.analyzeChapter(book, chapterIndex, force = true)
+        }.onSuccess { outcome ->
+            roleStatusText = if (outcome.ok) {
+                "配音分析完成 · ${outcome.segmentCount} 段"
+            } else {
+                outcome.message
+            }
+            roleStatusRunning = false
+            roleStatusError = !outcome.ok
+            roleStatusUntil = System.currentTimeMillis() + 4_000L
+            chapterModelCache = null
+            refresh()
+            context.toastOnUi(roleStatusText)
+        }.onError { error ->
+            roleStatusText = error.localizedMessage ?: "配音分析失败"
+            roleStatusRunning = false
+            roleStatusError = true
+            roleStatusUntil = System.currentTimeMillis() + 4_000L
+            refresh()
+            context.toastOnUi(roleStatusText)
+        }
+    }
+
+    private fun findDubbingCharacter(id: Long): BookCharacter? {
+        return appDb.bookCharacterDao.getCharacter(id)
+    }
+
+    private fun analyzeDubbingCharacter(id: Long) {
+        val book = ReadBook.book ?: return context.toastOnUi("书籍不存在")
+        Coroutine.async {
+            val character = findDubbingCharacter(id) ?: error("角色卡不存在")
+            BookDubbingWorkspace.analyzeRole(book, character, overwrite = true)
+        }.onSuccess { result ->
+            chapterModelCache = null
+            refresh()
+            context.toastOnUi(
+                if (result.ok) "音色分析完成：${result.style.take(32)}"
+                else result.message.ifBlank { "音色分析失败" }
+            )
+        }.onError { context.toastOnUi(it.localizedMessage ?: "音色分析失败") }
+    }
+
+    private fun previewDubbingCharacter(id: Long) {
+        Coroutine.async {
+            val character = findDubbingCharacter(id) ?: error("角色卡不存在")
+            BookDubbingWorkspace.previewRole(character)
+        }.onSuccess { result ->
+            context.toastOnUi(
+                if (result.ok) "试听 · ${result.engineLabel.ifBlank { result.message }}"
+                else result.message.ifBlank { "试听失败" }
+            )
+        }.onError { context.toastOnUi(it.localizedMessage ?: "试听失败") }
+    }
+
+    private fun reassignDubbingCharacter(id: Long) {
+        Coroutine.async {
+            val character = findDubbingCharacter(id) ?: error("角色卡不存在")
+            BookDubbingWorkspace.reassignRole(character)
+        }.onSuccess { ok ->
+            chapterModelCache = null
+            refresh()
+            context.toastOnUi(if (ok) "已重新分配发言人" else "没有可用发言人")
+        }.onError { context.toastOnUi(it.localizedMessage ?: "重配音失败") }
+    }
+
     private fun setTimer(minute: Int) {
         AppConfig.ttsTimer = minute
         ReadAloud.setTimer(context, minute)
@@ -1383,6 +1473,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             ttsEngines = buildTtsEngineOptions(),
             speechRoute = speechRoute,
             characterPreview = model?.characterPreview.orEmpty(),
+            dubbingAnalyzed = model?.roleCacheReady == true,
+            dubbingAnalyzing = model?.roleCacheRunning == true,
             audioInfo = model?.audioInfo ?: AudioInfoUi(enabled = AppConfig.aiReadAloudBgmEnabled),
             nearbyParagraphs = nearby,
             textCues = textCues,
@@ -1602,12 +1694,22 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private fun buildCharacterPreview(bookUrl: String?): List<CharacterPreviewUi> {
         if (bookUrl.isNullOrBlank()) return emptyList()
         return runCatching {
+            BookDubbingWorkspace.ensureNarratorEntity(bookUrl)
             appDb.bookCharacterDao.characters(bookUrl).take(8).map { character ->
+                val route = SpeechRoute.fromJson(character.speechRouteJson)
+                val routeSummary = when {
+                    !route.isConfigured -> "未绑定发言人"
+                    route.speakerName.isNotBlank() -> route.speakerName
+                    route.engineType == SpeechRoute.ENGINE_HTTP -> "HTTP TTS"
+                    else -> "系统 TTS"
+                }
                 CharacterPreviewUi(
                     id = character.id,
                     name = character.displayName(),
                     role = character.roleLabel(),
-                    summary = character.previewSummary(),
+                    voiceSummary = character.personality.trim()
+                        .ifBlank { character.previewSummary() },
+                    routeSummary = routeSummary,
                     key = "character:${character.id}"
                 )
             }
@@ -1841,6 +1943,10 @@ private fun ReadAloudPlayerContent(
     onCapsulePositionChange: (Float, Float) -> Unit,
     onCapsuleBounds: (RectF) -> Unit,
     onOpenCharacters: () -> Unit,
+    onAnalyzeCurrentChapter: () -> Unit,
+    onAnalyzeCharacter: (Long) -> Unit,
+    onPreviewCharacter: (Long) -> Unit,
+    onReassignCharacter: (Long) -> Unit,
     onHideRoleDetail: () -> Unit,
     onOpenRoleDetail: () -> Unit,
     onDismissRoleStatus: () -> Unit,
@@ -2062,7 +2168,11 @@ private fun ReadAloudPlayerContent(
                         onChapterSelect = onChapterSelect,
                         onTimerChange = onTimerChange,
                         onEngineSelect = onEngineSelect,
-                        onOpenCharacters = onOpenCharacters
+                        onOpenCharacters = onOpenCharacters,
+                        onAnalyzeCurrentChapter = onAnalyzeCurrentChapter,
+                        onAnalyzeCharacter = onAnalyzeCharacter,
+                        onPreviewCharacter = onPreviewCharacter,
+                        onReassignCharacter = onReassignCharacter
                     )
                 }
             }
@@ -4899,7 +5009,7 @@ private fun PlayerControlDock(
             FeaturePill(
                 icon = R.drawable.ic_bottom_person_e,
                 selectedIcon = R.drawable.ic_bottom_person_s,
-                text = "\u89d2\u8272",
+                text = "\u914d\u97f3",
                 selected = activeSheet == PlayerSheet.Characters,
                 colors = colors,
                 modifier = Modifier.weight(1f)
@@ -4993,6 +5103,10 @@ private fun PlayerSheetPanel(
     onTimerChange: (Int) -> Unit,
     onEngineSelect: (String) -> Unit,
     onOpenCharacters: () -> Unit,
+    onAnalyzeCurrentChapter: () -> Unit,
+    onAnalyzeCharacter: (Long) -> Unit,
+    onPreviewCharacter: (Long) -> Unit,
+    onReassignCharacter: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val panelShape = LocalContext.current.composePanelShape()
@@ -5037,7 +5151,15 @@ private fun PlayerSheetPanel(
                     )
                     PlayerSheet.Timer -> TimerSheet(state, colors, onTimerChange)
                     PlayerSheet.Engine -> EngineSheet(state, colors, onEngineSelect)
-                    PlayerSheet.Characters -> CharactersSheet(state, colors, onOpenCharacters)
+                    PlayerSheet.Characters -> DubbingSheet(
+                        state = state,
+                        colors = colors,
+                        onOpenWorkspace = onOpenCharacters,
+                        onAnalyzeCurrentChapter = onAnalyzeCurrentChapter,
+                        onAnalyzeCharacter = onAnalyzeCharacter,
+                        onPreviewCharacter = onPreviewCharacter,
+                        onReassignCharacter = onReassignCharacter
+                    )
                     PlayerSheet.None -> Unit
                 }
             }
@@ -5362,33 +5484,66 @@ private fun EngineRow(
 }
 
 @Composable
-private fun CharactersSheet(
+private fun DubbingSheet(
     state: ReadAloudPlayerPanel.PlayerUiState,
     colors: PlayerColors,
-    onOpenCharacters: () -> Unit
+    onOpenWorkspace: () -> Unit,
+    onAnalyzeCurrentChapter: () -> Unit,
+    onAnalyzeCharacter: (Long) -> Unit,
+    onPreviewCharacter: (Long) -> Unit,
+    onReassignCharacter: (Long) -> Unit
 ) {
     val context = LocalContext.current
     val actionShape = context.composeActionShape()
     Column(
-        modifier = Modifier.padding(16.dp),
+        modifier = Modifier.padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "\u89d2\u8272",
-                color = colors.primaryText,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                text = "${state.characterPreview.size}",
-                color = colors.subtleText,
-                fontSize = 12.sp
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "当前章节配音",
+                    color = colors.primaryText,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = when {
+                        state.dubbingAnalyzing -> "AI 正在分析旁白与角色"
+                        state.dubbingAnalyzed -> "已完成角色分析，可直接朗读"
+                        else -> "尚未分析当前章节"
+                    },
+                    color = colors.subtleText,
+                    fontSize = 11.sp
+                )
+            }
+            Surface(
+                modifier = Modifier
+                    .height(34.dp)
+                    .clickable(enabled = !state.dubbingAnalyzing, onClick = onAnalyzeCurrentChapter),
+                shape = actionShape,
+                color = if (state.dubbingAnalyzed) colors.panel else colors.accent,
+                border = BorderStroke(1.dp, colors.panelBorder)
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                ) {
+                    Text(
+                        text = when {
+                            state.dubbingAnalyzing -> "分析中"
+                            state.dubbingAnalyzed -> "重新分析"
+                            else -> "AI 分析"
+                        },
+                        color = if (state.dubbingAnalyzed) colors.primaryText else Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
         }
         if (state.characterPreview.isEmpty()) {
             Box(
@@ -5398,20 +5553,27 @@ private fun CharactersSheet(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "\u6682\u65e0\u89d2\u8272",
+                    text = "分析章节后会在这里生成角色与音色",
                     color = colors.secondaryText,
-                    fontSize = 13.sp
+                    fontSize = 12.sp
                 )
             }
         } else {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 92.dp, max = 188.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                    .heightIn(min = 104.dp, max = 240.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp)
             ) {
                 items(state.characterPreview, key = { it.key }) { character ->
-                    CharacterPreviewRow(character, colors, actionShape)
+                    DubbingCharacterRow(
+                        character = character,
+                        colors = colors,
+                        shape = actionShape,
+                        onAnalyze = { onAnalyzeCharacter(character.id) },
+                        onPreview = { onPreviewCharacter(character.id) },
+                        onReassign = { onReassignCharacter(character.id) }
+                    )
                 }
             }
         }
@@ -5421,60 +5583,95 @@ private fun CharactersSheet(
                 .height(40.dp)
         ) {
             SheetActionButton(
-                text = "\u5b8c\u6574\u89d2\u8272\u9875",
+                text = "完整配音工作台",
                 colors = colors,
                 shape = actionShape,
                 modifier = Modifier.weight(1f),
-                onClick = onOpenCharacters
+                onClick = onOpenWorkspace
             )
         }
     }
 }
 
 @Composable
-private fun CharacterPreviewRow(
+private fun DubbingCharacterRow(
     character: ReadAloudPlayerPanel.CharacterPreviewUi,
     colors: PlayerColors,
-    shape: Shape
+    shape: Shape,
+    onAnalyze: () -> Unit,
+    onPreview: () -> Unit,
+    onReassign: () -> Unit
 ) {
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(44.dp),
+        modifier = Modifier.fillMaxWidth(),
         shape = shape,
         color = colors.panel,
         border = BorderStroke(1.dp, colors.panelBorder)
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Column(modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = character.name,
+                        color = colors.primaryText,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "${character.role} · ${character.routeSummary}",
+                        color = colors.subtleText,
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                DubbingMiniAction("重配音", colors, onReassign)
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = character.voiceSummary,
+                    color = colors.secondaryText,
+                    fontSize = 10.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                DubbingMiniAction("AI 分析", colors, onAnalyze)
+                Spacer(modifier = Modifier.width(6.dp))
+                DubbingMiniAction("试听", colors, onPreview)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DubbingMiniAction(
+    text: String,
+    colors: PlayerColors,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .height(30.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(8.dp),
+        color = colors.panelStrong,
+        border = BorderStroke(1.dp, colors.panelBorder)
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.padding(horizontal = 9.dp)
         ) {
             Text(
-                text = character.role,
-                color = colors.subtleText,
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.width(66.dp)
+                text = text,
+                color = colors.accentText,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold
             )
-            Spacer(modifier = Modifier.width(8.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = character.name,
-                    color = colors.primaryText,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = character.summary,
-                    color = colors.subtleText,
-                    fontSize = 10.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
         }
     }
 }

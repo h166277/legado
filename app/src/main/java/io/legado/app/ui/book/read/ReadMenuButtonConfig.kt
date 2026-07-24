@@ -84,7 +84,6 @@ object ReadMenuButtonConfig {
             builtin(Builtin.AUTO_PAGE),
             builtin(Builtin.REPLACE_RULE),
             builtin(Builtin.NIGHT_THEME),
-            builtin(Builtin.CHARACTERS),
             builtin(Builtin.PARAGRAPH_RULES),
             builtin(Builtin.BUBBLE),
             builtin(Builtin.READ_ASSISTANT),

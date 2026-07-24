@@ -43,6 +43,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.exoplayer.InputStreamDataSource
 import io.legado.app.help.http.okHttpClient
+import io.legado.app.help.readaloud.HttpTtsAudioResponse
 import io.legado.app.help.readaloud.ReadAloudLoudnessAudioProcessor
 import io.legado.app.help.readaloud.ReadAloudPlaybackState
 import io.legado.app.help.readaloud.ReadAloudSpeakerLoudnessManager
@@ -742,6 +743,7 @@ class HttpReadAloudService : BaseReadAloudService(),
                     currentSpeakerName = route?.speakerName,
                     currentEmotionName = route?.emotionName,
                     currentEmotionTag = route?.emotionTag,
+                    currentVoiceStyle = route?.voiceStyle,
                     currentSpeechRouteJson = route?.toJson(),
                     source = httpTts,
                     readTimeout = 300 * 1000L,
@@ -775,23 +777,20 @@ class HttpReadAloudService : BaseReadAloudService(),
                         throw throwable
                     }
                 }
-                response.headers["Content-Type"]?.let { contentType ->
-                    val contentType = contentType.substringBefore(";")
-                    val ct = httpTts.contentType
-                    if (contentType == "application/json" || contentType.startsWith("text/")) {
-                        throw NoStackTraceException(response.peekBody(8_192).string())
-                    } else if (ct?.isNotBlank() == true) {
-                        if (!contentType.matches(ct.toRegex())) {
-                            throw NoStackTraceException(
-                                "TTS服务器返回错误：" + response.peekBody(8_192).string()
-                            )
-                        }
+                response.headers["Content-Type"]?.let { rawContentType ->
+                    val contentType = rawContentType.substringBefore(";")
+                    val expected = httpTts.contentType
+                    val jsonAudio = contentType == "application/json"
+                    if (!jsonAudio && expected?.isNotBlank() == true &&
+                        !contentType.matches(expected.toRegex())
+                    ) {
+                        throw NoStackTraceException(
+                            "TTS服务器返回错误：" + response.peekBody(8_192).string()
+                        )
                     }
                 }
                 currentCoroutineContext().ensureActive()
-                response.body.byteStream().let { stream ->
-                    return stream
-                }
+                return HttpTtsAudioResponse.openStream(response)
             } catch (e: Exception) {
                 when (e) {
                     is CancellationException -> throw e

@@ -947,11 +947,11 @@ object AiReadAloudRoleService {
         if (!route.isConfigured) return null
         val emotionName = segment.emotionName.trim()
         val emotionTag = segment.emotionTag.trim()
-        return if (emotionName.isNotBlank() || emotionTag.isNotBlank()) {
-            route.copy(emotionName = emotionName, emotionTag = emotionTag)
-        } else {
-            route
-        }
+        return route.copy(
+            emotionName = emotionName.ifBlank { route.emotionName },
+            emotionTag = emotionTag.ifBlank { route.emotionTag },
+            voiceStyle = character.personality.trim().ifBlank { route.voiceStyle }
+        )
     }
 
     fun segmentsForCue(
