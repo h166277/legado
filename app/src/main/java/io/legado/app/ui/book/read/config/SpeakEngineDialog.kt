@@ -1133,6 +1133,22 @@ private fun EngineGroupRow(
 
 
 @Composable
+private fun InfoPill(text: String, colors: SpeakEngineColors) {
+    Surface(
+        color = colors.page,
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
+        border = BorderStroke(1.dp, colors.stroke)
+    ) {
+        Text(
+            text,
+            color = colors.subText,
+            fontSize = 11.sp,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+    }
+}
+
+@Composable
 private fun InlineEngineAction(text: String, color: Color, onClick: () -> Unit) {
     TextButton(onClick = onClick, modifier = Modifier.height(32.dp)) {
         Text(text, color = color, fontSize = 12.sp)
