@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -32,7 +31,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,6 +46,8 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,6 +59,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.HttpTTS
+import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.ai.AiChatService
 import io.legado.app.help.config.AppConfig
@@ -70,6 +71,7 @@ import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogRepository
 import io.legado.app.help.readaloud.speech.SpeechVoiceEngineGroup
 import io.legado.app.help.readaloud.speech.SpeechVoiceOption
 import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
@@ -98,6 +100,7 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.splitNotBlank
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
@@ -108,8 +111,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import okhttp3.Request
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 
 /**
  * TTS 引擎管理。
@@ -1130,219 +1131,6 @@ private fun EngineGroupRow(
     }
 }
 
-@Composable
-private fun EngineManagementActions(
-    compact: Boolean,
-    colors: SpeakEngineColors,
-    actions: SpeakEngineDialogActions,
-    modifier: Modifier = Modifier
-) {
-    if (!compact) {
-        Row(
-            modifier = modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            SmallEngineAction("新增", actions::addHttpTts, colors)
-            SmallEngineAction("默认规则", actions::importDefault, colors)
-            SmallEngineAction("本地导入", actions::importLocal, colors)
-            SmallEngineAction("在线导入", actions::importOnline, colors)
-            SmallEngineAction("导出全部", actions::exportAll, colors)
-            SmallEngineAction("导出当前", actions::exportSelected, colors)
-        }
-        return
-    }
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = colors.card,
-        shape = RoundedCornerShape(LocalContext.current.composePanelRadius()),
-        border = BorderStroke(1.dp, colors.stroke)
-    ) {
-        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("管理", color = colors.subText, fontSize = 12.sp)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CompactEngineAction("新增", colors, Modifier.weight(1f), actions::addHttpTts)
-                CompactEngineAction("默认", colors, Modifier.weight(1f), actions::importDefault)
-                CompactEngineAction("在线", colors, Modifier.weight(1f), actions::importOnline)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CompactEngineAction("本地", colors, Modifier.weight(1f), actions::importLocal)
-                CompactEngineAction("导出全部", colors, Modifier.weight(1f), actions::exportAll)
-                CompactEngineAction("导出当前", colors, Modifier.weight(1f), actions::exportSelected)
-            }
-        }
-    }
-}
-
-@Composable
-private fun CompactEngineAction(
-    text: String,
-    colors: SpeakEngineColors,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Surface(
-        modifier = modifier.height(34.dp).clickable(onClick = onClick),
-        color = colors.page,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
-        border = BorderStroke(1.dp, colors.stroke)
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(text, color = colors.text, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
-
-@Composable
-private fun EngineDetailCard(
-    group: SpeechVoiceEngineGroup?,
-    httpTts: HttpTTS?,
-    colors: SpeakEngineColors,
-    actions: SpeakEngineDialogActions,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier,
-        color = colors.card,
-        shape = RoundedCornerShape(LocalContext.current.composePanelRadius()),
-        border = BorderStroke(1.dp, colors.stroke)
-    ) {
-        EngineDetail(group = group, httpTts = httpTts, colors = colors, actions = actions)
-    }
-}
-
-@Composable
-@OptIn(ExperimentalLayoutApi::class)
-private fun EngineDetail(
-    group: SpeechVoiceEngineGroup?,
-    httpTts: HttpTTS?,
-    colors: SpeakEngineColors,
-    actions: SpeakEngineDialogActions
-) {
-    if (group == null) {
-        Box(modifier = Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.Center) {
-            Text("暂无朗读引擎", color = colors.subText, fontSize = 14.sp)
-        }
-        return
-    }
-    Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(group.title, color = colors.text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                Text(group.subtitle, color = colors.subText, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
-            }
-        }
-        if (!group.loginUrl.isNullOrBlank() || httpTts != null) {
-            Row(
-                modifier = Modifier.padding(top = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (!group.loginUrl.isNullOrBlank()) {
-                    DetailEngineAction("登录", colors.accent) { actions.login(group) }
-                }
-                httpTts?.let {
-                    DetailEngineAction("编辑", colors.accent) { actions.editHttpTts(it.id) }
-                    DetailEngineAction("删除", colors.danger) { actions.deleteHttpTts(it) }
-                }
-            }
-        }
-        Text(
-            "发言人列表",
-            color = colors.subText,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(top = 14.dp)
-        )
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 74.dp, max = 300.dp)
-                .padding(top = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(group.options, key = { it.key }) { option ->
-                SpeakerOptionRow(option = option, colors = colors)
-            }
-        }
-        if (group.emotions.isNotEmpty()) {
-            Text(
-                "情绪",
-                color = colors.subText,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 14.dp)
-            )
-            FlowRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                group.emotions.forEach { emotion ->
-                    Surface(
-                        color = colors.page,
-                        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
-                        border = BorderStroke(1.dp, colors.stroke)
-                    ) {
-                        Text(emotion.emotionName, color = colors.text, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
-                    }
-                }
-            }
-        }
-        Text(
-            text = "选择此引擎后，普通朗读会使用该引擎；角色配音可在角色编辑页按发言人单独指定。",
-            color = colors.subText,
-            fontSize = 12.sp,
-            lineHeight = 18.sp,
-            modifier = Modifier.padding(top = 14.dp)
-        )
-    }
-}
-
-@Composable
-private fun SpeakerOptionRow(option: SpeechVoiceOption, colors: SpeakEngineColors) {
-    Surface(
-        color = colors.page,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
-        border = BorderStroke(1.dp, colors.stroke)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(option.speakerName, color = colors.text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    option.groupName.ifBlank { option.engineName },
-                    color = colors.subText,
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (option.toneID.isNotBlank()) {
-                Text(
-                    option.toneID,
-                    color = colors.subText,
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.widthIn(max = 120.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun InfoPill(text: String, colors: SpeakEngineColors) {
-    Surface(
-        color = colors.page,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
-        border = BorderStroke(1.dp, colors.stroke)
-    ) {
-        Text(text, color = colors.subText, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-    }
-}
 
 @Composable
 private fun InlineEngineAction(text: String, color: Color, onClick: () -> Unit) {
@@ -1351,19 +1139,6 @@ private fun InlineEngineAction(text: String, color: Color, onClick: () -> Unit) 
     }
 }
 
-@Composable
-private fun DetailEngineAction(text: String, color: Color, onClick: () -> Unit) {
-    Surface(
-        modifier = Modifier.height(34.dp).clickable(onClick = onClick),
-        color = color.copy(alpha = 0.10f),
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
-        border = BorderStroke(1.dp, color.copy(alpha = 0.28f))
-    ) {
-        Box(modifier = Modifier.padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
-            Text(text, color = color, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-        }
-    }
-}
 
 @Composable
 private fun SmallEngineAction(text: String, onClick: () -> Unit, colors: SpeakEngineColors) {

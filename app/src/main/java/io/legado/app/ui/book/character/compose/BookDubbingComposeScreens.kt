@@ -196,64 +196,66 @@ fun BookDubbingScreen(
                     shape = RoundedCornerShape(style.radius),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(Modifier = Modifier.padding(14.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "角色配音设置",
-                                color = style.colors.text,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 16.sp
-                            )
-                            Text(
-                                "${roles.size} 个角色",
-                                color = style.colors.subText,
-                                fontSize = 13.sp
-                            )
-                        }
-                        Spacer(Modifier.height(10.dp))
-                        SearchField(
-                            value = searchQuery,
-                            onValueChange = onSearchChange,
-                            placeholder = "搜索角色…"
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            TextButton(onClick = onMergeRoles) {
-                                Text("合并角色", color = style.colors.accent, fontSize = 13.sp)
-                            }
-                            TextButton(onClick = onOneClickAnalyzeRoles) {
-                                Text("一键分析", color = style.colors.accent, fontSize = 13.sp)
-                            }
-                            TextButton(onClick = onRefresh) {
-                                Text("刷新", color = style.colors.accent, fontSize = 13.sp)
-                            }
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        if (roles.isEmpty()) {
-                            Text(
-                                "还没有角色。先对章节做 AI 分析，或手动添加角色卡。",
-                                color = style.colors.subText,
-                                fontSize = 13.sp,
-                                modifier = Modifier.padding(vertical = 12.dp)
-                            )
-                        } else {
-                            roles.forEach { role ->
-                                RoleCard(
-                                    role = role,
-                                    onDelete = { onDeleteRole(role.character) },
-                                    onAnalyze = { onAnalyzeRole(role.character) },
-                                    onPreview = { onPreviewRole(role.character) },
-                                    onReassign = { onReassignRole(role.character) },
-                                    onOpen = { onOpenRole(role.character) }
+                    Box(Modifier.padding(14.dp)) {
+                        Column {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                Arrangement.SpaceBetween,
+                                Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "角色配音设置",
+                                    color = style.colors.text,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 16.sp
                                 )
-                                Spacer(Modifier.height(10.dp))
+                                Text(
+                                    text = "${roles.size} 个角色",
+                                    color = style.colors.subText,
+                                    fontSize = 13.sp
+                                )
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            SearchField(
+                                value = searchQuery,
+                                onValueChange = onSearchChange,
+                                placeholder = "搜索角色…"
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                TextButton(onClick = onMergeRoles) {
+                                    Text("合并角色", color = style.colors.accent, fontSize = 13.sp)
+                                }
+                                TextButton(onClick = onOneClickAnalyzeRoles) {
+                                    Text("一键分析", color = style.colors.accent, fontSize = 13.sp)
+                                }
+                                TextButton(onClick = onRefresh) {
+                                    Text("刷新", color = style.colors.accent, fontSize = 13.sp)
+                                }
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            if (roles.isEmpty()) {
+                                Text(
+                                    text = "还没有角色。先对章节做 AI 分析，或手动添加角色卡。",
+                                    color = style.colors.subText,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.padding(vertical = 12.dp)
+                                )
+                            } else {
+                                roles.forEach { role ->
+                                    RoleCard(
+                                        role = role,
+                                        onDelete = { onDeleteRole(role.character) },
+                                        onAnalyze = { onAnalyzeRole(role.character) },
+                                        onPreview = { onPreviewRole(role.character) },
+                                        onReassign = { onReassignRole(role.character) },
+                                        onOpen = { onOpenRole(role.character) }
+                                    )
+                                    Spacer(Modifier.height(10.dp))
+                                }
                             }
                         }
                     }
